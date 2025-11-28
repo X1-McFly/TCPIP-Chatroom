@@ -1,7 +1,7 @@
 CC = gcc
-CFLAGS = -Wall
+CFLAGS = -Wall -pthread
 TARGET = server client
-PORT = 2005
+PORT = 2006
 
 all: $(TARGET)
 
