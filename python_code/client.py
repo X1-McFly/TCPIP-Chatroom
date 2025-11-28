@@ -1,11 +1,17 @@
+#!/usr/bin/env python3
+
+# TCP Chat Client - Python Implementation
+# Uses threading for concurrent send/receive.
+
+
 import socket
 import threading
+import signal
 import sys
-
 from datetime import datetime
 
-IP = "127.0.0.1"
-PORT = 2006
+DEFAULT_IP = "127.0.0.1"
+DEFAULT_PORT = 2006
 BUFFER_SIZE = 1024
 
 
@@ -22,8 +28,8 @@ class ChatClient:
     
     def connect(self):
         self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        
         try:
+            print(f"Connecting to {self.host}:{self.port}...")
             self.socket.connect((self.host, self.port))
             self.running = True
             return True
@@ -40,8 +46,14 @@ class ChatClient:
     def clear_line(self):
         print("\r\033[K", end='', flush=True)
     
+    def signal_handler(self, sig, frame):
+        self.running = False
+        if self.socket:
+            self.socket.close()
+        print("\nDisconnected.")
+        sys.exit(0)
+    
     def receive_handler(self):
-        """Thread function to receive messages from server"""
         while self.running:
             try:
                 data = self.socket.recv(BUFFER_SIZE)
@@ -59,7 +71,6 @@ class ChatClient:
                 self.running = False
                 break
             except OSError:
-                # Socket was closed
                 break
             except Exception as e:
                 if self.running:
@@ -67,37 +78,37 @@ class ChatClient:
                 break
     
     def start(self):
+        signal.signal(signal.SIGINT, self.signal_handler)
+        signal.signal(signal.SIGTERM, self.signal_handler)
+        
         if not self.connect():
             return
         
-        # Start receive thread
         recv_thread = threading.Thread(target=self.receive_handler, daemon=True)
         recv_thread.start()
         
-        # Main loop - send messages
         try:
             while self.running:
                 self.print_prompt()
                 message = input()
-                self.clear_line()  # Clear the typed input line
-                print("\033[A\r\033[K", end='', flush=True)  # Move up and clear prompt line
+                self.clear_line()
+                print("\033[A\r\033[K", end='', flush=True)
                 
                 if not self.running:
                     break
                 
-                # Check for exit command
-                if message in [':exit', ':quit']:
+                if message == "/quit":
                     try:
                         self.socket.sendall(message.encode('utf-8'))
                     except:
                         pass
                     break
                 
-                # Store name from first message, don't print it
                 if not self.my_name:
                     self.my_name = message
-                else:
-                    # Show own message with timestamp
+                elif message.startswith("/nick "):
+                    self.my_name = message[6:].strip()
+                elif not message.startswith('/'):
                     timestamp = self.get_timestamp()
                     print(f"{timestamp} [{self.my_name}]: {message}")
                 
@@ -107,8 +118,6 @@ class ChatClient:
                     print("Failed to send message.")
                     break
                     
-        except KeyboardInterrupt:
-            print("\nClosing connection...")
         except EOFError:
             pass
         finally:
@@ -124,7 +133,13 @@ class ChatClient:
 
 
 def main():
-    client = ChatClient(IP, PORT)
+    import argparse
+    parser = argparse.ArgumentParser(description='TCP Chat Client')
+    parser.add_argument('--host', '-H', default=DEFAULT_IP, help=f'Server IP (default: {DEFAULT_IP})')
+    parser.add_argument('--port', '-p', type=int, default=DEFAULT_PORT, help=f'Port (default: {DEFAULT_PORT})')
+    args = parser.parse_args()
+    
+    client = ChatClient(args.host, args.port)
     client.start()
 
 
